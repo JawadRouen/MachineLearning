@@ -1,0 +1,107 @@
+---
+title: "Machine Learning for Weight Lifting Exercises"
+author: "Jawad ALAOUI"
+date: "23 October 2015"
+output: html_document
+---
+
+First of all, we download an read the data:
+
+```{r, echo=TRUE, eval=TRUE}
+train <- read.csv("training.csv")
+test <- read.csv("testing.csv")
+```
+
+#Model selection
+
+Knowing that we are in front of a classification problem, we suggest to select 3 classification models that we will compare using Cross-validation. Here are suggested models:**Bagging**, **Random Forest** and **Boosting**.
+
+#Features selection
+
+Let's remove variables with negligible variance and that contain no added value for our classification model. We will also remove columns that contain information about the features extraction process.
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results='hide'}
+library(caret)
+num_features <- dim(train)[2]
+train_class <- train[,num_features]
+trainfeatures <- train[, -c(1:7, num_features)]
+trainfeatures <- trainfeatures[,-nearZeroVar(trainfeatures, saveMetrics = FALSE)]
+num_features <- dim(trainfeatures)[2] 
+```
+
+Also, we'll remove all covariates were we have more the 50% N.A values.
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+var_na_ratio <- apply(is.na(trainfeatures),2,mean)
+trainfeatures <- trainfeatures[,var_na_ratio<0.5]
+```
+
+Now, let's remove covariates that introduce too much variance. To do so we need to calculate the features correlation and use *findCorrelation* function to spot the covariates to remove in order to reduce pair-wise correlations.
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+trainfeatures <- trainfeatures[,-findCorrelation(cor(trainfeatures), cutoff = 0.8)]
+num_features <- dim(trainfeatures)[2]
+print(num_features)
+```
+
+$39$ features remain. We can start testing the models. To compare the models, we are going to use **train** function and cross-validation.
+
+As the computation will be time consuming, we are going to use k-fold method with $k = 3$ instead of $10$ (default value). Cross-validation in train function will tune the parameters and select the ones that most perform for each model.
+
+We will also split the training set to 2 different parts. One part will be used for building the model an the second part to make a final evaluation of the 3 models.
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+set.seed(7575)
+
+iTrain <- createDataPartition(y=train_class, p=0.5, list=FALSE)
+training_Feats <- trainfeatures[iTrain,]
+training_Class <- train_class[iTrain]
+eval_Feats <- trainfeatures[-iTrain,]
+eval_Class <- train_class[-iTrain]
+```
+
+##Bagging Model:
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+control <- trainControl(method = "cv", number = 3)
+set.seed(7676)
+treebag <- train(training_Class ~ ., data=training_Feats, method="treebag", trControl=control)
+print(treebag)
+confusionMatrix(eval_Class, predict(treebag, eval_Feats))
+
+```
+
+##Random Forest Model:
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+set.seed(7777)
+rf <- train(training_Class~ ., data=training_Feats, method="rf", importance = T, trControl=control)
+print(rf)
+confusionMatrix(eval_Class, predict(rf, eval_Feats))
+```
+
+##Boosting Model:
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+set.seed(7878)
+gbm <- train(training_Class~ .,data=training_Feats,method="gbm",verbose = F, trControl=control)
+print(gbm)
+confusionMatrix(eval_Class, predict(gbm, eval_Feats))
+```
+
+#Conclusion
+
+Random forest has the best Accuracy on the out of sample evaluation $98.93 \%$.
+the calculated Accuracy with Cross-validation is $98.09 \%$. It's also interesting to look at the Out Of Bag estimate of error rate : $1.39 \%$.
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+rf$finalModel$err.rate[rf$finalModel$ntree, "OOB"]*100
+
+```
+
+All these results show that we have a good performance for the Random forest Model. Therefore, this is the model that we'll keep to predict the outcomes for the test set.
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+predict(rf,test)
+```
+
